@@ -1,0 +1,28 @@
+services:
+  chroma:
+    image: chromadb/chroma:1.0.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/data
+
+  # Only for the "ollama" Spring profile:  docker compose --profile ollama up -d
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # Uncomment if you have an NVIDIA GPU available in WSL:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  chroma-data:
+  ollama-data:

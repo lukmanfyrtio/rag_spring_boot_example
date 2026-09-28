@@ -1,0 +1,34 @@
+# Common settings. Provider settings live in the profile files:
+#   application-gemini.yml  (default)
+#   application-openai.yml
+#   application-ollama.yml
+# Switch with:  mvn spring-boot:run -Dspring-boot.run.profiles=ollama
+spring:
+  application:
+    name: rag-demo
+  profiles:
+    active: gemini
+  mvc:
+    async:
+      request-timeout: 5m   # /ask/stream stays open while the answer is generated
+  ai:
+    # Only chat + embedding are used (chosen per profile). Turn off the other
+    # model types the OpenAI starter would enable, so they don't need an API key.
+    model:
+      image: none
+      audio:
+        speech: none
+        transcription: none
+      moderation: none
+    vectorstore:
+      chroma:
+        client:
+          host: http://localhost
+          port: 8000
+        initialize-schema: true
+        # collection-name is set per profile: each embedding model has its own vector size
+
+rag:
+  docs:
+    dir: docs               # folder that is watched and loaded into Chroma
+    scan-interval-ms: 5000  # how often to check for new/changed/deleted files

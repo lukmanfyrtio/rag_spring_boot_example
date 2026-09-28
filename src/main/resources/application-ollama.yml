@@ -1,0 +1,26 @@
+# Local models with Ollama, no API key
+# Needs: docker compose --profile ollama up -d   (or Ollama installed on Windows)
+spring:
+  http:
+    client:
+      read-timeout: 5m   # local models on CPU can be slow
+  ai:
+    model:
+      chat: ollama
+      embedding: ollama
+    ollama:
+      base-url: http://localhost:11434
+      init:
+        pull-model-strategy: when_missing   # downloads the models on first start
+        timeout: 30m
+      chat:
+        options:
+          model: llama3.2
+          temperature: 0.2
+          keep-alive: 60m    # keep the model in memory between questions
+      embedding:
+        options:
+          model: nomic-embed-text
+    vectorstore:
+      chroma:
+        collection-name: rag-docs-ollama

@@ -1,0 +1,22 @@
+# Gemini through its OpenAI-compatible endpoint
+# Needs: GEMINI_API_KEY  (https://aistudio.google.com/apikey)
+spring:
+  ai:
+    model:
+      chat: openai
+      embedding: openai
+    openai:
+      api-key: ${GEMINI_API_KEY}
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: gemini-3.1-flash-lite
+          temperature: 0.2
+      embedding:
+        embeddings-path: /embeddings
+        options:
+          model: gemini-embedding-001
+    vectorstore:
+      chroma:
+        collection-name: rag-docs-gemini

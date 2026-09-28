@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RAG Chat</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+    <style>
+        :root {
+            --bg: #f6f7f9; --panel: #ffffff; --text: #1f2328; --muted: #6a737d;
+            --border: #e1e4e8; --accent: #2f6feb; --user: #2f6feb; --user-text: #fff;
+            --code-bg: #f3f4f6;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f1115; --panel: #171a21; --text: #e6e8eb; --muted: #9aa3ad;
+                --border: #2a2f3a; --accent: #5b8cff; --user: #3a63d8; --user-text: #fff;
+                --code-bg: #0b0d11;
+            }
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text);
+               font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+        .app { max-width: 860px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+        header { padding: 16px; border-bottom: 1px solid var(--border); }
+        header h1 { margin: 0; font-size: 18px; }
+        header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+
+        #chat { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+        .msg { max-width: 100%; }
+        .user { align-self: flex-end; background: var(--user); color: var(--user-text);
+                padding: 10px 14px; border-radius: 14px 14px 4px 14px; max-width: 80%; white-space: pre-wrap; }
+        .bot { background: var(--panel); border: 1px solid var(--border);
+               padding: 14px 18px; border-radius: 14px 14px 14px 4px; overflow-x: auto; }
+
+        /* Markdown inside answers */
+        .bot > :first-child { margin-top: 0; }
+        .bot > :last-child { margin-bottom: 0; }
+        .bot h1, .bot h2, .bot h3 { font-size: 1.05em; margin: 1em 0 .4em; }
+        .bot ul, .bot ol { padding-left: 1.4em; }
+        .bot li { margin: .2em 0; }
+        .bot code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+        .bot pre { background: var(--code-bg); padding: 12px; border-radius: 8px; overflow-x: auto; }
+        .bot pre code { background: none; padding: 0; }
+        .bot table { border-collapse: collapse; margin: .6em 0; display: block; overflow-x: auto; }
+        .bot th, .bot td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+        .bot th { background: var(--code-bg); }
+        .bot a { color: var(--accent); }
+
+        .sources { margin-top: 10px; font-size: 13px; }
+        .sources summary { cursor: pointer; color: var(--muted); }
+        .source { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0; }
+        .source b { display: block; }
+        .source pre { white-space: pre-wrap; margin: 4px 0 0; font-size: 12px; color: var(--muted);
+                      max-height: 160px; overflow: auto; background: none; padding: 0; }
+
+        .typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .error { color: #d73a49; }
+
+        .suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .suggestions button { border: 1px solid var(--border); background: var(--panel); color: var(--text);
+                              border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+
+        form { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 12px 16px 16px;
+               background: var(--bg); border-top: 1px solid var(--border); }
+        textarea { flex: 1; resize: none; padding: 10px 12px; font: inherit; border-radius: 10px;
+                   border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+        form button { padding: 0 18px; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
+                      font: inherit; cursor: pointer; }
+        form button:disabled { opacity: .5; cursor: default; }
+    </style>
+</head>
+<body>
+<div class="app">
+    <header>
+        <h1>RAG Chat</h1>
+        <p>Tanya apa saja tentang file di folder <code>docs/</code>. File baru otomatis dimuat.</p>
+    </header>
+
+    <main id="chat">
+        <div class="suggestions" id="suggestions">
+            <button>Ringkas isi dokumen ini</button>
+            <button>Endpoint API apa saja yang tersedia?</button>
+            <button>Bagaimana cara autentikasinya?</button>
+        </div>
+    </main>
+
+    <form id="form">
+        <textarea id="q" rows="2" placeholder="Tulis pertanyaan... (Enter kirim, Shift+Enter baris baru)"></textarea>
+        <button id="send">Kirim</button>
+    </form>
+</div>
+
+<script>
+    const chat = document.getElementById('chat');
+    const form = document.getElementById('form');
+    const input = document.getElementById('q');
+    const send = document.getElementById('send');
+
+    const renderMarkdown = (md) => DOMPurify.sanitize(marked.parse(md));
+
+    function addMessage(cls) {
+        const el = document.createElement('div');
+        el.className = 'msg ' + cls;
+        chat.append(el);
+        return el;
+    }
+
+    function scrollDown() {
+        window.scrollTo({ top: document.body.scrollHeight });
+    }
+
+    function renderSources(container, sources) {
+        if (!sources.length) return;
+        const details = document.createElement('details');
+        details.className = 'sources';
+        const files = [...new Set(sources.map(s => s.file))].join(', ');
+        details.innerHTML = `<summary>📄 ${sources.length} potongan dokumen dipakai (${DOMPurify.sanitize(files)})</summary>`;
+        for (const s of sources) {
+            const div = document.createElement('div');
+            div.className = 'source';
+            const title = document.createElement('b');
+            title.textContent = `${s.file} · skor ${s.score?.toFixed(3) ?? '-'}`;
+            const pre = document.createElement('pre');
+            pre.textContent = s.text;
+            div.append(title, pre);
+            details.append(div);
+        }
+        container.append(details);
+    }
+
+    async function ask(question) {
+        document.getElementById('suggestions')?.remove();
+        addMessage('user').textContent = question;
+        const bot = addMessage('bot');
+        const answerEl = document.createElement('div');
+        answerEl.className = 'typing';
+        bot.append(answerEl);
+        scrollDown();
+        send.disabled = true;
+
+        // Same query + topK as the advisor uses, so these are the chunks the answer is based on
+        const sourcesPromise = fetch('/search?q=' + encodeURIComponent(question))
+            .then(r => r.ok ? r.json() : []).catch(() => []);
+
+        try {
+            const res = await fetch('/ask/stream?q=' + encodeURIComponent(question));
+            if (!res.ok) throw new Error(res.status + ' ' + await res.text());
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let text = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                text += decoder.decode(value, { stream: true });
+                answerEl.innerHTML = renderMarkdown(text);
+                scrollDown();
+            }
+            if (!text.trim()) answerEl.textContent = '(tidak ada jawaban)';
+        } catch (err) {
+            answerEl.innerHTML = `<span class="error">Error: ${DOMPurify.sanitize(err.message)}</span>`;
+        } finally {
+            answerEl.classList.remove('typing');
+            send.disabled = false;
+            input.focus();
+        }
+
+        renderSources(bot, await sourcesPromise);
+        scrollDown();
+    }
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const q = input.value.trim();
+        if (!q || send.disabled) return;
+        input.value = '';
+        ask(q);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            form.requestSubmit();
+        }
+    });
+
+    document.getElementById('suggestions').addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') ask(e.target.textContent);
+    });
+
+    input.focus();
+</script>
+</body>
+</html>
